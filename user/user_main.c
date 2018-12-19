@@ -11,7 +11,7 @@
 #include <gpio.h>
 #include <mem.h>
 #include <user_interface.h>
-#include <driver/uart.h>
+#include <driver/uart.h> 
 #include <upgrade.h>
 
 // LIB: EasyQ
@@ -24,6 +24,12 @@
 
 LOCAL EasyQSession eq;
 
+enum direction {
+	MOTOR_FORWARD,
+	MOTOR_BACKWARD
+};
+
+LOCAL enum direction current_direction;
 
 void
 fota_report_status(const char *q) {
@@ -40,20 +46,33 @@ fota_report_status(const char *q) {
 }
 
 
-void ICACHE_FLASH_ATTR
-update_relay(uint32_t num, bool on) {
-	GPIO_OUTPUT_SET(GPIO_ID_PIN(num), on);
+uint32_t ICACHE_FLASH_ATTR
+motor_change_direction(int steps) {
+	enum direction new_direction = (steps < 0) ? MOTOR_BACKWARD: MOTOR_FORWARD;
+	if (!(current_direction ^ new_direction)) {
+		return abs(steps);
+	}
+	INFO("Changing direction %d\r\n", steps);
+	GPIO_OUTPUT_SET(GPIO_ID_PIN(DIR_NUM), 1);
+	GPIO_OUTPUT_SET(GPIO_ID_PIN(STEP_NUM), 1);
+	os_delay_us(1);
+	GPIO_OUTPUT_SET(GPIO_ID_PIN(DIR_NUM), 0);
+	GPIO_OUTPUT_SET(GPIO_ID_PIN(STEP_NUM), 0);
+	os_delay_us(1);
+	return abs(steps) - 1;
 }
 
 
 void ICACHE_FLASH_ATTR
-update_relay_by_message(uint32_t num, const char* msg) {
-	bool on = strcmp(msg, "on") == 0;
-	switch (num) {
-		case RELAY1_NUM:
-			update_relay(RELAY1_NUM, !on);	
-			break;
-	}
+motor_stopped(const char* msg) {
+	GPIO_OUTPUT_SET(GPIO_ID_PIN(EN_NUM), 1);
+}
+
+void ICACHE_FLASH_ATTR
+motor_update_by_message(const char* msg) {
+	GPIO_OUTPUT_SET(GPIO_ID_PIN(EN_NUM), 0);
+	uint32_t steps = motor_change_direction(atoi(msg));
+	motor_rotate(steps);
 }
 
 
@@ -62,8 +81,8 @@ easyq_message_cb(void *arg, const char *queue, const char *msg,
 		uint16_t message_len) {
 	//INFO("EASYQ: Message: %s From: %s\r\n", msg, queue);
 
-	if (strcmp(queue, RELAY1_QUEUE) == 0) { 
-		update_relay_by_message(RELAY1_NUM, msg);
+	if (strcmp(queue, MOTOR_QUEUE) == 0) { 
+		motor_update_by_message(msg);
 	}
 	else if (strcmp(queue, FOTA_QUEUE) == 0) {
 		if (msg[0] == 'R') {
@@ -83,7 +102,7 @@ void ICACHE_FLASH_ATTR
 easyq_connect_cb(void *arg) {
 	INFO("EASYQ: Connected to %s:%d\r\n", eq.hostname, eq.port);
 	INFO("\r\n***** Smart Outlet "VERSION"****\r\n");
-	const char * queues[] = {RELAY1_QUEUE, FOTA_QUEUE};
+	const char * queues[] = {MOTOR_QUEUE, FOTA_QUEUE};
 	easyq_pull_all(&eq, queues, 2);
 }
 
@@ -117,15 +136,24 @@ void user_init(void) {
     uart_init(BIT_RATE_115200, BIT_RATE_115200);
     os_delay_us(60000);
 
-	// Relays 
-	PIN_FUNC_SELECT(RELAY1_MUX, RELAY1_FUNC);
-	GPIO_OUTPUT_SET(GPIO_ID_PIN(RELAY1_NUM), 1);
+	// Motor 
+	PIN_FUNC_SELECT(DIR_MUX, DIR_FUNC);
+	PIN_PULLUP_EN(DIR_MUX);
+	GPIO_OUTPUT_SET(GPIO_ID_PIN(DIR_NUM), 0);
 
-    GPIO_REG_WRITE(
-			GPIO_PIN_ADDR(GPIO_ID_PIN(RELAY1_NUM)), 
-			GPIO_REG_READ(GPIO_PIN_ADDR(GPIO_ID_PIN(RELAY1_NUM))) 
-			| GPIO_PIN_PAD_DRIVER_SET(GPIO_PAD_DRIVER_ENABLE)
-		); //open drain;
+	PIN_FUNC_SELECT(STEP_MUX, STEP_FUNC);
+	PIN_PULLUP_EN(STEP_MUX);
+	GPIO_OUTPUT_SET(GPIO_ID_PIN(STEP_NUM), 0);
+	
+	PIN_FUNC_SELECT(EN_MUX, EN_FUNC);
+	PIN_PULLUP_EN(EN_MUX);
+	GPIO_OUTPUT_SET(GPIO_ID_PIN(EN_NUM), 1);
+
+    //GPIO_REG_WRITE(
+	//		GPIO_PIN_ADDR(GPIO_ID_PIN(RELAY1_NUM)), 
+	//		GPIO_REG_READ(GPIO_PIN_ADDR(GPIO_ID_PIN(RELAY1_NUM))) 
+	//		| GPIO_PIN_PAD_DRIVER_SET(GPIO_PAD_DRIVER_ENABLE)
+	//	); //open drain;
 		
 	EasyQError err = easyq_init(&eq, EASYQ_HOSTNAME, EASYQ_PORT, EASYQ_LOGIN);
 	if (err != EASYQ_OK) {
@@ -136,7 +164,8 @@ void user_init(void) {
 	eq.ondisconnect = easyq_disconnect_cb;
 	eq.onconnectionerror = easyq_connection_error_cb;
 	eq.onmessage = easyq_message_cb;
-
+	motor_set_stop_callback(motor_stopped);
+	motor_init();
     WIFI_Connect(WIFI_SSID, WIFI_PSK, wifi_connect_cb);
     INFO("System started ...\r\n");
 }

@@ -8,16 +8,26 @@
 
 #define DEVICE_NAME				"st"
 #define EASYQ_LOGIN				DEVICE_NAME
-#define RELAY1_QUEUE			DEVICE_NAME":1"
+#define MOTOR_QUEUE				DEVICE_NAME":motor"
 #define FOTA_QUEUE				DEVICE_NAME":fota"
 #define FOTA_STATUS_QUEUE		DEVICE_NAME":fota:status"
 
 /* GPIO */
 
-// Relay #1
-#define RELAY1_MUX		PERIPHS_IO_MUX_GPIO5_U
-#define RELAY1_NUM		5
-#define RELAY1_FUNC		FUNC_GPIO5
+// Direction 
+#define DIR_MUX			PERIPHS_IO_MUX_GPIO5_U
+#define DIR_NUM			5
+#define DIR_FUNC		FUNC_GPIO5
+
+// Step
+#define STEP_MUX		PERIPHS_IO_MUX_GPIO4_U
+#define STEP_NUM		4
+#define STEP_FUNC		FUNC_GPIO4
+
+// EN
+#define EN_MUX		PERIPHS_IO_MUX_GPIO0_U
+#define EN_NUM		0
+#define EN_FUNC		FUNC_GPIO0
 
 
 #endif
