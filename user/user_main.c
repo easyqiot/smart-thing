@@ -46,23 +46,6 @@ fota_report_status(const char *q) {
 }
 
 
-uint32_t ICACHE_FLASH_ATTR
-motor_change_direction(int steps) {
-	enum direction new_direction = (steps < 0) ? MOTOR_BACKWARD: MOTOR_FORWARD;
-	if (!(current_direction ^ new_direction)) {
-		return abs(steps);
-	}
-	INFO("Changing direction %d\r\n", steps);
-	GPIO_OUTPUT_SET(GPIO_ID_PIN(DIR_NUM), 1);
-	GPIO_OUTPUT_SET(GPIO_ID_PIN(STEP_NUM), 1);
-	os_delay_us(1);
-	GPIO_OUTPUT_SET(GPIO_ID_PIN(DIR_NUM), 0);
-	GPIO_OUTPUT_SET(GPIO_ID_PIN(STEP_NUM), 0);
-	os_delay_us(1);
-	return abs(steps) - 1;
-}
-
-
 void ICACHE_FLASH_ATTR
 motor_stopped(const char* msg) {
 	GPIO_OUTPUT_SET(GPIO_ID_PIN(EN_NUM), 1);
@@ -71,7 +54,8 @@ motor_stopped(const char* msg) {
 void ICACHE_FLASH_ATTR
 motor_update_by_message(const char* msg) {
 	GPIO_OUTPUT_SET(GPIO_ID_PIN(EN_NUM), 0);
-	uint32_t steps = motor_change_direction(atoi(msg));
+	int steps = atoi(msg);
+	//uint32_t steps = motor_change_direction(atoi(msg));
 	motor_rotate(steps);
 }
 
